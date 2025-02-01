@@ -1,60 +1,93 @@
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
-import sqlite3
 
 # Function to scrape player stats from Baseball-Reference
 def scrape_player_stats(player_url):
     url = f'https://www.baseball-reference.com{player_url}'
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Extract the player's name from the <h1> tag and its <span> inside
+    player_name_tag = soup.find('h1').find('span')
+    player_name = player_name_tag.get_text(strip=True) if player_name_tag else None
+
+    # Extract the player's position(s)
+    pos_strong = soup.find('strong', text=lambda t: t and ("Position:" in t or "Positions:" in t))
+    if pos_strong and pos_strong.next_sibling:
+        position = pos_strong.next_sibling.strip()
+    else:
+        position = None
+
+    # Extract the player's batting orientation.
+    bats_strong = soup.find('strong', text=lambda t: t and "Bats:" in t)
+    if bats_strong and bats_strong.next_sibling:
+        batting_text = bats_strong.next_sibling.strip()
+        batting = batting_text.split()[0]  # Take only the first word
+    else:
+        batting = None
+
+    # Extract the player's throwing orientation.
+    throws_strong = soup.find('strong', text=lambda t: t and "Throws:" in t)
+    if throws_strong and throws_strong.next_sibling:
+        throws_text = throws_strong.next_sibling.strip()
+        throwing = throws_text.split()[0]  # Take only the first word
+    else:
+        throwing = None
 
     # Find the stats table (this is a common structure in Baseball-Reference pages)
     table = soup.find('table', {'class': 'stats_table'})
+    
+    if not table:
+        return pd.DataFrame()  # Return empty DataFrame if no stats table is found
 
     # Extract column headers
     headers = [th.get_text() for th in table.find_all('th')]
 
     # Remove columns after 'Awards' (extra columns with years as headers)
     try:
-        awards_index = headers.index('Awards')  # Find index of 'Awards' column
-        headers = headers[:awards_index + 1]  # Keep columns only up to 'Awards'
+        awards_index = headers.index('Awards')
+        headers = headers[:awards_index + 1]
     except ValueError:
-        pass  # If 'Awards' column doesn't exist, keep the full headers
+        pass
 
     # Extract player stats
     rows = table.find_all('tr')
     stats = []
-
     for row in rows[1:]:  # Skip the header row
         columns = row.find_all('td')
-        
         if columns:
-            # Add the "Season" to the start of each row by using the first column
-            season = row.find('th').get_text()  # Get the season from the <th> cell (first column)
-            
-            # Check for "Yrs" in the row; if found, stop adding rows
+            # Get the "Season" from the <th> cell (first column)
+            season = row.find('th').get_text()
             if 'Yrs' in season:
-                break  # Stop processing rows once the "Yrs" row is reached
-            
+                break
             stats.append([season] + [col.get_text() for col in columns])
-
-    # Debugging: Print header and row lengths
-    print("Headers:", headers)
-    for idx, row in enumerate(stats[:5]):  # Print first 5 rows to inspect
-        print(f"Row {idx}: {len(row)} columns")
-
+    
     # Ensure rows have the same number of columns as headers
     for row in stats:
-        if len(row) < len(headers):  # If there are fewer columns, pad with None
+        if len(row) < len(headers):
             row.extend([None] * (len(headers) - len(row)))
-
+    
     # Create the DataFrame after ensuring rows match header length
     df = pd.DataFrame(stats, columns=headers)
-
+    
+    # Create new rows for player's name, position, batting orientation, and throwing orientation.
+    new_row_name = ["Name: " + str(player_name)] + [None] * (len(headers) - 1)
+    new_row_position = ["Position(s): " + str(position)] + [None] * (len(headers) - 1)
+    new_row_batting = ["Bats: " + str(batting)] + [None] * (len(headers) - 1)
+    new_row_throwing = ["Throws: " + str(throwing)] + [None] * (len(headers) - 1)
+    
+    # Append the new rows at the top of the DataFrame
+    df.loc[-1] = new_row_throwing
+    df.loc[-2] = new_row_batting
+    df.loc[-3] = new_row_position
+    df.loc[-4] = new_row_name
+    df.index = df.index + 4  # Shift index to keep order
+    df = df.sort_index()
+    
     return df
 
-# Example player URL for Mike Trout (adjust this URL to scrape different players)
+# Example player URL for testing
 player_url = '/players/t/troutmi01.shtml'
 df = scrape_player_stats(player_url)
 
@@ -62,4 +95,5 @@ df = scrape_player_stats(player_url)
 print(df)
 
 # Save the DataFrame as a CSV file
-df.to_csv('player_stats.csv', index=False)
+df.to_csv('player_stats_with_full_info.csv', index=False)
+
