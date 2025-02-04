@@ -21,9 +21,7 @@ def clean_weight(weight_str):
 
 # Function to replace empty cells with 'None'
 def replace_empty_cells_with_none(df):
-    df = df.apply(lambda col: col.apply(lambda x: 'None' if x == '' or x is None else x))
-    return df
-
+    return df.map(lambda x: 'None' if x == '' or x is None else x)
 
 # Function to scrape player stats from Baseball-Reference
 def scrape_player_stats(player_url):
@@ -43,13 +41,14 @@ def scrape_player_stats(player_url):
     throwing = throws_strong.next_sibling.strip().split()[0] if throws_strong and throws_strong.next_sibling else None
     
     # Extract height and weight
-    p_tags = soup.find_all('p')
-    if len(p_tags) >= 3:
-        spans = p_tags[2].find_all('span')
-        height = spans[0].get_text(strip=True) if len(spans) > 0 else None
-        weight = spans[1].get_text(strip=True) if len(spans) > 1 else None
-    else:
-        height, weight = None, None
+    height, weight = None, None
+    spans = soup.find_all('span')
+    
+    for i in range(len(spans) - 1):  # Loop through spans up to the second last one
+        if spans[i + 1].get_text(strip=True).endswith("lb"):  # If next span contains weight
+            height = spans[i].get_text(strip=True)  # Current span is height
+            weight = spans[i + 1].get_text(strip=True)  # Next span is weight
+            break  # Stop after finding the first occurrence
     
     height = convert_height(height)
     weight = clean_weight(weight)
@@ -93,8 +92,8 @@ def scrape_player_stats(player_url):
     
     return df
 
-# Example player URL
-player_url = '/players/k/kershcl01.shtml'
+# Example player URL (Shohei Ohtani)
+player_url = '/players/b/bettsmo01.shtml'
 df = scrape_player_stats(player_url)
 print(df)
 df.to_csv('player_stats_with_full_info.csv', index=False)
