@@ -1,3 +1,4 @@
+import sqlite3
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -23,6 +24,43 @@ def clean_weight(weight_str):
 def replace_empty_cells_with_none(df):
     return df.map(lambda x: 'None' if x == '' or x is None else x)
 
+# Function to insert player data into the database
+def insert_player_data(player_info, stats, is_pitcher):
+    conn = sqlite3.connect("baseball_stats.db")
+    cursor = conn.cursor()
+
+    # Insert player info or get existing player_id
+    cursor.execute("SELECT id FROM players WHERE name = ?", (player_info['name'],))
+    player = cursor.fetchone()
+
+    if player:
+        player_id = player[0]
+    else:
+        cursor.execute('''
+            INSERT INTO players (name, position, bats, throws, height_inches, weight_lbs)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (player_info['name'], player_info['position'], player_info['bats'], player_info['throws'], 
+              player_info['height_inches'], player_info['weight_lbs']))
+        player_id = cursor.lastrowid
+
+    # Insert stats based on player type
+    for stat in stats:
+        if is_pitcher:
+            cursor.execute('''
+                INSERT INTO pitching_stats (
+                    player_id, season, age, team, league, war, w, l, win_loss_pct, era, g, gs, gf, cg, sho, sv, ip, h, r, er, hr, bb, ibb, so, hbp, bk, wp, bf, era_plus, fip, whip, h9, hr9, bb9, so9, so_bb_ratio, awards
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (player_id, *stat))
+        else:
+            cursor.execute('''
+                INSERT INTO batting_stats (
+                    player_id, season, age, team, league, war, g, pa, ab, r, h, doubles, triples, hr, rbi, sb, cs, bb, so, ba, obp, slg, ops, ops_plus, roba, rbat_plus, tb, gidp, hbp, sh, sf, ibb, position_played, awards
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (player_id, *stat))
+
+    conn.commit()
+    conn.close()
+
 # Function to scrape player stats from Baseball-Reference
 def scrape_player_stats(player_url):
     url = f'https://www.baseball-reference.com{player_url}'
@@ -43,57 +81,53 @@ def scrape_player_stats(player_url):
     # Extract height and weight
     height, weight = None, None
     spans = soup.find_all('span')
-    
-    for i in range(len(spans) - 1):  # Loop through spans up to the second last one
-        if spans[i + 1].get_text(strip=True).endswith("lb"):  # If next span contains weight
-            height = spans[i].get_text(strip=True)  # Current span is height
-            weight = spans[i + 1].get_text(strip=True)  # Next span is weight
-            break  # Stop after finding the first occurrence
+    for i in range(len(spans) - 1):
+        if spans[i + 1].get_text(strip=True).endswith("lb"):
+            height = spans[i].get_text(strip=True)
+            weight = spans[i + 1].get_text(strip=True)
+            break
     
     height = convert_height(height)
     weight = clean_weight(weight)
-    
+
+    # Prepare player info
+    player_info = {
+        'name': player_name,
+        'position': position,
+        'bats': batting,
+        'throws': throwing,
+        'height_inches': height,
+        'weight_lbs': weight
+    }
+
     # Find stats table
     table = soup.find('table', {'class': 'stats_table'})
     if not table:
-        return pd.DataFrame()
-    
-    # Extract column headers
-    headers = [th.get_text() for th in table.find_all('th')]
-    try:
-        awards_index = headers.index('Awards')
-        headers = headers[:awards_index + 1]
-    except ValueError:
-        pass
-    
-    # Extract player stats
+        return
+
+    # Extract stats headers and data
+    headers = [th.get_text(strip=True) for th in table.find_all('th')]
     rows = table.find_all('tr')
     stats = []
     for row in rows[1:]:
         columns = row.find_all('td')
         if columns:
-            season = row.find('th').get_text()
+            season = row.find('th').get_text(strip=True)
             if 'Yrs' in season:
                 break
-            stats.append([season] + [col.get_text() for col in columns])
-    
-    for row in stats:
-        if len(row) < len(headers):
-            row.extend([None] * (len(headers) - len(row)))
-    
-    # Insert general info in first six columns
-    full_headers = ['Name', 'Position', 'Bats', 'Throws', 'Height (inches)', 'Weight (lbs)'] + headers
-    full_data = [[player_name, position, batting, throwing, height, weight] + row for row in stats]
-    
-    df = pd.DataFrame(full_data, columns=full_headers)
-    
+            stat_row = [season] + [col.get_text(strip=True) for col in columns]
+            stats.append(stat_row)
+
     # Replace empty cells with 'None'
-    df = replace_empty_cells_with_none(df)
-    
-    return df
+    stats = [replace_empty_cells_with_none(pd.Series(stat)).tolist() for stat in stats]
+
+    # Determine if player is a pitcher or batter based on stats headers
+    is_pitcher = 'ERA' in headers
+
+    # Insert data into the database
+    insert_player_data(player_info, stats, is_pitcher)
 
 # Example player URL (Shohei Ohtani)
-player_url = '/players/b/bettsmo01.shtml'
-df = scrape_player_stats(player_url)
-print(df)
-df.to_csv('player_stats_with_full_info.csv', index=False)
+player_url = '/players/s/sotoju01.shtml'
+scrape_player_stats(player_url)
+print("Player data inserted successfully.")
