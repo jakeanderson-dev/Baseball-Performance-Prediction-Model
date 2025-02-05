@@ -45,13 +45,13 @@ def insert_player_data(player_info, stats, is_pitcher):
 
     # Insert stats based on player type
     for stat in stats:
-        if is_pitcher:
+        if is_pitcher and len(stat) == 36:
             cursor.execute('''
                 INSERT INTO pitching_stats (
                     player_id, season, age, team, league, war, w, l, win_loss_pct, era, g, gs, gf, cg, sho, sv, ip, h, r, er, hr, bb, ibb, so, hbp, bk, wp, bf, era_plus, fip, whip, h9, hr9, bb9, so9, so_bb_ratio, awards
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (player_id, *stat))
-        else:
+        elif not is_pitcher and len(stat) == 33:
             cursor.execute('''
                 INSERT INTO batting_stats (
                     player_id, season, age, team, league, war, g, pa, ab, r, h, doubles, triples, hr, rbi, sb, cs, bb, so, ba, obp, slg, ops, ops_plus, roba, rbat_plus, tb, gidp, hbp, sh, sf, ibb, position_played, awards
@@ -113,9 +113,12 @@ def scrape_player_stats(player_url):
         columns = row.find_all('td')
         if columns:
             season = row.find('th').get_text(strip=True)
-            if 'Yrs' in season:
-                break
             stat_row = [season] + [col.get_text(strip=True) for col in columns]
+
+            # Skip rows containing 'Did not play'
+            if any('did not play' in col.lower() for col in stat_row):
+                continue
+
             stats.append(stat_row)
 
     # Replace empty cells with 'None'
@@ -127,7 +130,9 @@ def scrape_player_stats(player_url):
     # Insert data into the database
     insert_player_data(player_info, stats, is_pitcher)
 
-# Example player URL (Shohei Ohtani)
-player_url = '/players/s/sotoju01.shtml'
+# Example player URL (Mike Trout)
+player_url = '/players/k/kershcl01.shtml'
 scrape_player_stats(player_url)
+
 print("Player data inserted successfully.")
+
