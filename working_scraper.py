@@ -45,13 +45,25 @@ def insert_player_data(player_info, stats, is_pitcher):
 
     # Insert stats based on player type
     for stat in stats:
+        season = stat[0]
+        
         if is_pitcher and len(stat) == 36:
+            # Check for duplicate entries
+            cursor.execute("SELECT 1 FROM pitching_stats WHERE player_id = ? AND season = ?", (player_id, season))
+            if cursor.fetchone():
+                continue
+            
             cursor.execute('''
                 INSERT INTO pitching_stats (
                     player_id, season, age, team, league, war, w, l, win_loss_pct, era, g, gs, gf, cg, sho, sv, ip, h, r, er, hr, bb, ibb, so, hbp, bk, wp, bf, era_plus, fip, whip, h9, hr9, bb9, so9, so_bb_ratio, awards
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (player_id, *stat))
         elif not is_pitcher and len(stat) == 33:
+            # Check for duplicate entries
+            cursor.execute("SELECT 1 FROM batting_stats WHERE player_id = ? AND season = ?", (player_id, season))
+            if cursor.fetchone():
+                continue
+            
             cursor.execute('''
                 INSERT INTO batting_stats (
                     player_id, season, age, team, league, war, g, pa, ab, r, h, doubles, triples, hr, rbi, sb, cs, bb, so, ba, obp, slg, ops, ops_plus, roba, rbat_plus, tb, gidp, hbp, sh, sf, ibb, position_played, awards
@@ -131,8 +143,6 @@ def scrape_player_stats(player_url):
     insert_player_data(player_info, stats, is_pitcher)
 
 # Example player URL (Mike Trout)
-player_url = '/players/k/kershcl01.shtml'
+player_url = '/players/v/verlaju01.shtml'
 scrape_player_stats(player_url)
-
 print("Player data inserted successfully.")
-
