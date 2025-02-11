@@ -104,6 +104,14 @@ def create_database():
         )
     ''')
     
+    # Create player urls table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS player_urls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT UNIQUE
+        )
+    """)
+    
     conn.commit()
     conn.close()
     print("Database and tables created successfully.")

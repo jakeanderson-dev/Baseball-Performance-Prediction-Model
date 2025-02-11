@@ -1,6 +1,24 @@
 import requests
 from bs4 import BeautifulSoup
 import re
+import sqlite3
+
+def save_urls_to_db(urls, db_path="baseball_stats.db"):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS player_urls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT UNIQUE
+        )
+    """)
+    
+    for url in urls:
+        cursor.execute("INSERT OR IGNORE INTO player_urls (url) VALUES (?)", (url,))
+    
+    conn.commit()
+    conn.close()
 
 def get_player_urls(base_url, letter, min_year=2004):
     player_urls = []
@@ -29,16 +47,18 @@ def get_player_urls(base_url, letter, min_year=2004):
             first_year = int(years_match.group(1))
             
             if first_year >= min_year:
-                full_url = f"https://www.baseball-reference.com{player_url}"
-                player_urls.append(full_url)
-                print(full_url)  # Print to terminal
+                player_urls.append(player_url)
+                print(player_url)  # Print to terminal
     
+    save_urls_to_db(player_urls)
     return player_urls
 
 if __name__ == "__main__":
     base_index_url = "https://www.baseball-reference.com/players/"
     letter = "a"  # Set to 'a' to check only 'A' players
     get_player_urls(base_index_url, letter)
+
+
 
 
 
